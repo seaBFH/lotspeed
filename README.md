@@ -1,7 +1,17 @@
 ### lotspeed 开心版
 
 
-* install
+* auto install
+
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/uk0/lotspeed/main/install.sh | sudo bash
+#   or
+wget -qO- https://raw.githubusercontent.com/uk0/lotspeed/main/install.sh | sudo bash
+```
+
+
+* manual compile and load
 
 ```bash
 
