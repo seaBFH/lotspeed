@@ -8,26 +8,6 @@
 curl -fsSL https://raw.githubusercontent.com/uk0/lotspeed/main/install.sh | sudo bash
 #   or
 wget -qO- https://raw.githubusercontent.com/uk0/lotspeed/main/install.sh | sudo bash
-
-
-# 查看状态
-lotspeed status
-
-# 应用预设
-lotspeed preset balanced    # 推荐
-lotspeed preset aggressive  # 激进
-lotspeed preset extreme     # 极限
-
-# 调整参数
-lotspeed set lotserver_rate 1000000000
-lotspeed set lotserver_gain 30
-lotspeed set lotserver_verbose 0 #关闭日志
-
-# 监控日志
-lotspeed monitor
-
-# 卸载
-lotspeed uninstall
 ```
 
 
