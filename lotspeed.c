@@ -408,7 +408,10 @@ static void lotspeed_cong_control_impl(struct sock *sk, const struct rate_sample
     tp->snd_cwnd = cwnd;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
-    sk->sk_pacing_rate = rate;
+    // 改进: 给予 20% 的 Overhead 空间，防止 Pacing 限制了 TCP 本身的突发能力
+    // 许多网卡需要小规模的突发来维持高吞吐
+    u64 pacing = rate + (rate >> 2); // Rate * 1.25
+    sk->sk_pacing_rate = (rate * 120) / 100;
 #endif
 
     // 定期状态输出
