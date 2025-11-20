@@ -52,11 +52,11 @@ dmesg -w
 * helper
 
 ```bash
-
-root@ubuntu:~# lotspeed
+root@racknerd-6bf1e7b:~# lotspeed
 ╔════════════════════════════════════════════════════════╗
-║          LotSpeed v2.0 Management Tool                 ║
-║          Created by uk0 @ 2025-11-18                   ║
+║        LotSpeed v3.3 Management Tool                   ║
+║        公路超跑 完整整合版                                ║
+║        Created by uk0 @ 2025-11-20 19:14:01            ║
 ╚════════════════════════════════════════════════════════╝
 
 Usage: lotspeed {command} [options]
@@ -71,20 +71,44 @@ Commands:
   connections - Show active connections
   log         - Show recent logs
   monitor     - Monitor logs in real-time
+  benchmark   - Run simple speed test
   uninstall   - Completely uninstall LotSpeed
 
 Presets:
-  lotspeed preset conservative  - 1Gbps, 1.5x gain
-  lotspeed preset balanced      - 5Gbps, 2.5x gain [RECOMMENDED]
-  lotspeed preset aggressive    - 10Gbps, 4.0x gain
+  lotspeed preset conservative  - 1Gbps, 1.5x gain, safe
+  lotspeed preset balanced      - 5Gbps, 2.0x gain [RECOMMENDED]
+  lotspeed preset aggressive    - 10Gbps, 3.0x gain
   lotspeed preset extreme       - 20Gbps, 5.0x gain, TURBO
+  lotspeed preset bbr-like      - BBR-style behavior
+  lotspeed preset debug         - Enable debug logging
 
-Examples:
-  lotspeed status
-  lotspeed preset balanced
-  lotspeed set lotserver_rate 1000000000
-  lotspeed set lotserver_turbo 1
-  lotspeed monitor
+Examples (v3.3 new features):
+  lotspeed status                          # Check status
+  lotspeed preset balanced                 # Apply balanced preset
+  lotspeed set lotserver_rate 0            # Auto-detect rate
+  lotspeed set lotserver_gain 25           # Set 2.5x gain
+  lotspeed set lotserver_beta 819          # Set 80% fairness
+  lotspeed set lotserver_turbo 1           # Enable turbo mode
+  lotspeed set lotserver_verbose 1         # Enable debug log
+  lotspeed set lotserver_adaptive 1        # Enable adaptive
+  lotspeed set force_unload 1              # Force unload
+  lotspeed monitor                         # Watch real-time logs
+
+Advanced Examples:
+  # For 100Mbps VPS:
+  lotspeed set lotserver_rate 12500000     # 100Mbps limit
+  lotspeed set lotserver_gain 18           # 1.8x gain
+
+  # For 10Gbps dedicated server:
+  lotspeed set lotserver_rate 1250000000   # 10Gbps
+  lotspeed set lotserver_gain 30           # 3.0x gain
+  lotspeed set lotserver_max_cwnd 10000    # Large cwnd
+
+  # For lossy network (packet loss):
+  lotspeed set lotserver_beta 921          # 90% (gentle)
+  lotspeed set lotserver_turbo 1           # Ignore loss
+
+Note: v3.3 includes ProbeRTT, Smart Startup, ECN support
 ```
 
 
@@ -99,4 +123,4 @@ Examples:
 
 ### changelog
 * 支持 `debian`,`ubunut` 5.x.x ,6.x.x 内核
-* RN垃圾服务器能实现双 `8K 120fps` 秒开，
+* RN垃圾服务器能实现双 `8K 60fps` 秒开，

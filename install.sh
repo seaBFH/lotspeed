@@ -44,7 +44,7 @@ print_banner() {
 ║    |_____\___/ \__|____/| .__/ \___|\___|\__,_|            ║
 ║                         |_|                                ║
 ║                                                            ║
-║                 公路超跑 完整整合版                         ║
+║                 公路超跑 完整整合版                        ║
 ║                     Version 3.3                            ║
 ║                                                            ║
 ╚════════════════════════════════════════════════════════════╝
@@ -545,7 +545,7 @@ apply_preset() {
             echo -e "${RED}WARNING: This ignores ALL congestion signals!${NC}"
             ;;
         bbr-like)
-            echo 0 > /sys/module/lotspeed/parameters/lotserver_rate
+            echo 125000000 > /sys/module/lotspeed/parameters/lotserver_rate
             echo 25 > /sys/module/lotspeed/parameters/lotserver_gain
             echo 4 > /sys/module/lotspeed/parameters/lotserver_min_cwnd
             echo 10000 > /sys/module/lotspeed/parameters/lotserver_max_cwnd
@@ -553,7 +553,7 @@ apply_preset() {
             echo 1 > /sys/module/lotspeed/parameters/lotserver_adaptive
             echo 0 > /sys/module/lotspeed/parameters/lotserver_turbo
             echo 0 > /sys/module/lotspeed/parameters/lotserver_verbose
-            echo -e "${GREEN}Applied BBR-like preset (auto-detect, 2.5x, probe)${NC}"
+            echo -e "${GREEN}Applied BBR-like preset (1G, 2.5x, probe)${NC}"
             ;;
         debug)
             echo 1 > /sys/module/lotspeed/parameters/lotserver_verbose
@@ -565,7 +565,7 @@ apply_preset() {
             echo "  balanced    - Good performance (5G, 2.0x) [RECOMMENDED]"
             echo "  aggressive  - High performance (10G, 3.0x)"
             echo "  extreme     - Maximum speed (20G, 5.0x, TURBO)"
-            echo "  bbr-like    - BBR-style behavior (auto, 2.5x)"
+            echo "  bbr-like    - BBR-style behavior (1G, 2.5x)"
             echo "  debug       - Enable verbose debug logging"
             exit 1
             ;;
@@ -684,9 +684,9 @@ case "$ACTION" in
         ;;
     *)
         echo "╔════════════════════════════════════════════════════════╗"
-        echo "║        LotSpeed v$VERSION Management Tool              ║"
-        echo "║        公路超跑 完整整合版                              ║"
-        echo "║        Created by uk0 @ $CURRENT_TIME                  ║"
+        echo "║        LotSpeed v$VERSION Management Tool                  ║"
+        echo "║        公路超跑 完整整合版                             ║"
+        echo "║        Created by uk0 @ $CURRENT_TIME            ║"
         echo "╚════════════════════════════════════════════════════════╝"
         echo ""
         echo "Usage: lotspeed {command} [options]"
