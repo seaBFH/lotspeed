@@ -1,4 +1,4 @@
-// lotspeed.c  ——  v3.1 "公路超跑" 企业级优化版 (兼容性修复)
+// lotspeed.c  ——  v3.2 "公路超跑" 企业级优化版 (6.8内核兼容性修复)
 // Author: uk0 @ 2025-11-21
 // 致敬经典，超越经典。引入 ECN、智能启动、ProbeRTT 和公平性退避。
 
@@ -17,15 +17,14 @@
 #define LOTSPEED_STARTUP_GROWTH_TARGET 1280  // 慢启动带宽增长目标 (1.25x)，1024=1.0x
 #define LOTSPEED_STARTUP_EXIT_ROUNDS 3       // 慢启动带宽增长停滞多少轮后退出
 
-// 版本兼容性检测 (v3.1 修正)
-// 6.8.x and older kernels use the old cong_control signature
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || \
-    (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0))
+// 版本兼容性检测 (v3.2 修正)
+// Kernel 6.9+ uses new API with ack, flag parameters
+// Kernels 6.8 and older use the old API
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
 #define LOTSPEED_NEW_CONG_CONTROL_API 1
 #else
 #define LOTSPEED_OLD_CONG_CONTROL_API 1
 #endif
-
 
 // --- 可调参数 ---
 static unsigned long lotserver_rate = 125000000ULL;  // 1Gbps 最高速率上限
@@ -125,7 +124,7 @@ static int param_set_beta(const char *val, const struct kernel_param *kp)
     int ret = param_set_uint(val, kp);
     if (ret == 0 && old_val != lotserver_beta && lotserver_verbose) {
         pr_info("lotspeed: fairness beta changed: %u -> %u (%u/1024)\n",
-                old_val, lotserver_beta);
+                old_val, lotserver_beta, lotserver_beta);
     }
     return ret;
 }
@@ -166,7 +165,6 @@ MODULE_PARM_DESC(lotserver_beta, "Beta for fairness backoff on loss (default 717
 module_param(lotserver_verbose, bool, 0644);
 MODULE_PARM_DESC(lotserver_verbose, "Enable verbose logging");
 
-
 // --- 统计信息 ---
 static atomic_t active_connections = ATOMIC_INIT(0);
 static atomic64_t total_bytes_sent = ATOMIC64_INIT(0);
@@ -188,7 +186,7 @@ struct lotspeed {
     u64 actual_rate;
     u32 cwnd_gain;
 
-    // 状态与时间戳 (v3.1 修正: u64 -> u32)
+    // 状态与时间戳
     enum lotspeed_state state;
     u32 last_state_ts;
     u32 probe_rtt_ts;
@@ -326,7 +324,7 @@ static void lotspeed_adapt_and_control(struct sock *sk, const struct rate_sample
 
     // --- 3. 核心状态机转换 ---
 
-    // 周期性进入 PROBE_RTT (v3.1 修正: time_after -> time_after32)
+    // 周期性进入 PROBE_RTT (使用 time_after32 处理 u32 jiffies)
     if (ca->state != PROBE_RTT && ca->rtt_min > 0 &&
         time_after32(tcp_jiffies32, ca->probe_rtt_ts + msecs_to_jiffies(LOTSPEED_PROBE_RTT_INTERVAL_MS))) {
         enter_state(sk, PROBE_RTT);
@@ -358,7 +356,7 @@ static void lotspeed_adapt_and_control(struct sock *sk, const struct rate_sample
             break;
         case CRUISING:
             if (congestion_detected) enter_state(sk, AVOIDING);
-                // 周期性探测更高带宽 (v3.1 修正: time_after -> time_after32)
+                // 周期性探测更高带宽 (使用 time_after32 处理 u32 jiffies)
             else if (time_after32(tcp_jiffies32, ca->last_state_ts + msecs_to_jiffies(200))) {
                 enter_state(sk, PROBING);
             }
@@ -367,7 +365,7 @@ static void lotspeed_adapt_and_control(struct sock *sk, const struct rate_sample
             if (!congestion_detected) enter_state(sk, PROBING);
             break;
         case PROBE_RTT:
-            // 探测时间结束，恢复并重置计时器 (v3.1 修正: time_after -> time_after32)
+            // 探测时间结束，恢复并重置计时器 (使用 time_after32 处理 u32 jiffies)
             if (time_after32(tcp_jiffies32, ca->last_state_ts + msecs_to_jiffies(LOTSPEED_PROBE_RTT_DURATION_MS))) {
                 ca->probe_rtt_ts = tcp_jiffies32;
                 enter_state(sk, STARTUP); // 重新开始探测
@@ -445,7 +443,7 @@ static void lotspeed_adapt_and_control(struct sock *sk, const struct rate_sample
     }
 }
 
-// 主拥塞控制函数 - 兼容不同内核版本 (v3.1 修正)
+// 主拥塞控制函数 - 兼容不同内核版本 (v3.2 修正)
 #ifdef LOTSPEED_NEW_CONG_CONTROL_API
 static void lotspeed_cong_control(struct sock *sk, u32 ack, int flag, const struct rate_sample *rs)
 {
@@ -486,7 +484,6 @@ static u32 lotspeed_undo_cwnd(struct sock *sk) { return tcp_sk(sk)->snd_cwnd; }
 
 static void lotspeed_cwnd_event(struct sock *sk, enum tcp_ca_event event) { }
 
-
 static struct tcp_congestion_ops lotspeed_ops __read_mostly = {
         .name           = "lotspeed",
         .owner          = THIS_MODULE,
@@ -520,7 +517,7 @@ static int __init lotspeed_module_init(void)
     BUILD_BUG_ON(sizeof(struct lotspeed) > ICSK_CA_PRIV_SIZE);
 
     pr_info("╔════════════════════════════════════════════════════════╗\n");
-    pr_info("║      LotSpeed v3.1 - 公路超跑 (兼容性修复)       ║\n");
+    pr_info("║      LotSpeed v3.2 - 公路超跑 (6.8内核兼容)            ║\n");
 
     snprintf(buffer, sizeof(buffer), "uk0 @ 2025-11-21");
     print_boxed_line("          Created by ", buffer);
@@ -532,9 +529,9 @@ static int __init lotspeed_module_init(void)
     print_boxed_line("          Kernel: ", buffer);
 
 #ifdef LOTSPEED_NEW_CONG_CONTROL_API
-    pr_info("║          API: NEW (5.19-6.7, 6.9+)                     ║\n");
+    pr_info("║          API: NEW (6.9+)                                ║\n");
 #else
-    pr_info("║          API: LEGACY (6.8 and older)                   ║\n");
+    pr_info("║          API: LEGACY (6.8 and older)                    ║\n");
 #endif
 
     pr_info("╚════════════════════════════════════════════════════════╝\n");
@@ -575,7 +572,7 @@ static void __exit lotspeed_module_exit(void)
         }
     }
 
-    pr_info("lotspeed: v3.1 unloaded. Goodbye!\n");
+    pr_info("lotspeed: v3.2 unloaded. Goodbye!\n");
 }
 
 module_init(lotspeed_module_init);
@@ -583,6 +580,6 @@ module_exit(lotspeed_module_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("uk0 <github.com/uk0>");
-MODULE_VERSION("3.1");
-MODULE_DESCRIPTION("LotSpeed v3.1 - Enterprise-grade CCA with ECN, Smart Startup, ProbeRTT and Fairness");
+MODULE_VERSION("3.2");
+MODULE_DESCRIPTION("LotSpeed v3.2 - Enterprise-grade CCA with ECN, Smart Startup, ProbeRTT and Fairness");
 MODULE_ALIAS("tcp_lotspeed");
