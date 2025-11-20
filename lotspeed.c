@@ -1,5 +1,5 @@
 // lotspeed.c  ——  v3.3 "公路超跑" 完整整合版 (保留v2.1特性+v3.2优化)
-// Author: uk0 @ 2025-11-20 18:58:51
+// Author: uk0
 // 整合v2.1的详细日志和v3.2的企业级优化
 
 #include <linux/module.h>
@@ -9,13 +9,27 @@
 #include <linux/moduleparam.h>
 #include <linux/jiffies.h>
 #include <linux/ktime.h>
+#include <linux/rtc.h>
+
+// 定义一个宏来简化使用
+#define CURRENT_TIMESTAMP ({ \
+    static char __ts[32]; \
+    struct timespec64 ts; \
+    struct tm tm; \
+    ktime_get_real_ts64(&ts); \
+    time64_to_tm(ts.tv_sec, 0, &tm); \
+    snprintf(__ts, sizeof(__ts), "%04ld-%02d-%02d %02d:%02d:%02d", \
+            tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, \
+            tm.tm_hour, tm.tm_min, tm.tm_sec); \
+    __ts; \
+})
 
 // --- v3.0 新增：算法核心参数 ---
 #define LOTSPEED_BETA_SCALE 1024 // 用于公平性退避的 beta 因子精度
 #define LOTSPEED_PROBE_RTT_INTERVAL_MS 10000 // 10秒进行一次 RTT 探测
-#define LOTSPEED_PROBE_RTT_DURATION_MS 200   // RTT 探测持续 200ms
+#define LOTSPEED_PROBE_RTT_DURATION_MS 500   // RTT 探测持续 200ms
 #define LOTSPEED_STARTUP_GROWTH_TARGET 1280  // 慢启动带宽增长目标 (1.25x)，1024=1.0x
-#define LOTSPEED_STARTUP_EXIT_ROUNDS 3       // 慢启动带宽增长停滞多少轮后退出
+#define LOTSPEED_STARTUP_EXIT_ROUNDS 2       // 慢启动带宽增长停滞多少轮后退出
 
 // 版本兼容性检测 (v3.3 修正)
 // Kernel 6.9+ uses new API with ack, flag parameters
@@ -47,7 +61,7 @@ static int param_set_rate(const char *val, const struct kernel_param *kp)
         unsigned long gbps_int = lotserver_rate / 125000000;
         unsigned long gbps_frac = (lotserver_rate % 125000000) * 100 / 125000000;
         pr_info("lotspeed: [uk0@%s] rate changed: %lu -> %lu (%lu.%02lu Gbps)\n",
-                "2025-11-20 18:58:51", old_val, lotserver_rate, gbps_int, gbps_frac);
+                CURRENT_TIMESTAMP, old_val, lotserver_rate, gbps_int, gbps_frac);
     }
     return ret;
 }
@@ -61,7 +75,7 @@ static int param_set_gain(const char *val, const struct kernel_param *kp)
         unsigned int gain_int = lotserver_gain / 10;
         unsigned int gain_frac = lotserver_gain % 10;
         pr_info("lotspeed: [uk0@%s] gain changed: %u -> %u (%u.%ux)\n",
-                "2025-11-20 18:58:51", old_val, lotserver_gain, gain_int, gain_frac);
+                CURRENT_TIMESTAMP, old_val, lotserver_gain, gain_int, gain_frac);
     }
     return ret;
 }
@@ -73,7 +87,7 @@ static int param_set_min_cwnd(const char *val, const struct kernel_param *kp)
 
     if (ret == 0 && old_val != lotserver_min_cwnd && lotserver_verbose) {
         pr_info("lotspeed: [uk0@%s] min_cwnd changed: %u -> %u\n",
-                "2025-11-20 18:58:51", old_val, lotserver_min_cwnd);
+                CURRENT_TIMESTAMP, old_val, lotserver_min_cwnd);
     }
     return ret;
 }
@@ -85,7 +99,7 @@ static int param_set_max_cwnd(const char *val, const struct kernel_param *kp)
 
     if (ret == 0 && old_val != lotserver_max_cwnd && lotserver_verbose) {
         pr_info("lotspeed: [uk0@%s] max_cwnd changed: %u -> %u\n",
-                "2025-11-20 18:58:51", old_val, lotserver_max_cwnd);
+                CURRENT_TIMESTAMP, old_val, lotserver_max_cwnd);
     }
     return ret;
 }
@@ -97,7 +111,7 @@ static int param_set_adaptive(const char *val, const struct kernel_param *kp)
 
     if (ret == 0 && old_val != lotserver_adaptive && lotserver_verbose) {
         pr_info("lotspeed: [uk0@%s] adaptive mode: %s -> %s\n",
-                "2025-11-20 18:58:51", old_val ? "ON" : "OFF", lotserver_adaptive ? "ON" : "OFF");
+                CURRENT_TIMESTAMP, old_val ? "ON" : "OFF", lotserver_adaptive ? "ON" : "OFF");
     }
     return ret;
 }
@@ -109,10 +123,10 @@ static int param_set_turbo(const char *val, const struct kernel_param *kp)
 
     if (ret == 0 && old_val != lotserver_turbo && lotserver_verbose) {
         if (lotserver_turbo) {
-            pr_info("lotspeed: [uk0@%s] ⚡⚡⚡ TURBO MODE ACTIVATED ⚡⚡⚡\n", "2025-11-20 18:58:51");
+            pr_info("lotspeed: [uk0@%s] ⚡⚡⚡ TURBO MODE ACTIVATED ⚡⚡⚡\n", CURRENT_TIMESTAMP);
             pr_info("lotspeed: WARNING: Ignoring ALL congestion signals!\n");
         } else {
-            pr_info("lotspeed: [uk0@%s] Turbo mode DEACTIVATED\n", "2025-11-20 18:58:51");
+            pr_info("lotspeed: [uk0@%s] Turbo mode DEACTIVATED\n", CURRENT_TIMESTAMP);
         }
     }
     return ret;
@@ -124,7 +138,7 @@ static int param_set_beta(const char *val, const struct kernel_param *kp)
     int ret = param_set_uint(val, kp);
     if (ret == 0 && old_val != lotserver_beta && lotserver_verbose) {
         pr_info("lotspeed: [uk0@%s] fairness beta changed: %u -> %u (%u/1024)\n",
-                "2025-11-20 18:58:51", old_val, lotserver_beta, lotserver_beta);
+                CURRENT_TIMESTAMP, old_val, lotserver_beta, lotserver_beta);
     }
     return ret;
 }
@@ -169,7 +183,6 @@ MODULE_PARM_DESC(lotserver_verbose, "Enable verbose logging");
 static atomic_t active_connections = ATOMIC_INIT(0);
 static atomic64_t total_bytes_sent = ATOMIC64_INIT(0);
 static atomic_t total_losses = ATOMIC_INIT(0);
-static atomic_t module_ref_count = ATOMIC_INIT(0);  // v2.1特性：模块引用计数
 
 // --- v3.0 核心状态机 ---
 enum lotspeed_state {
@@ -229,7 +242,7 @@ static void enter_state(struct sock *sk, enum lotspeed_state new_state) {
     if (ca->state != new_state) {
         if (lotserver_verbose) {
             pr_info("lotspeed: [uk0@%s] state %s -> %s\n",
-                    "2025-11-20 18:58:51", state_to_str(ca->state), state_to_str(new_state));
+                    CURRENT_TIMESTAMP, state_to_str(ca->state), state_to_str(new_state));
         }
         ca->state = new_state;
         ca->last_state_ts = tcp_jiffies32;
@@ -240,6 +253,7 @@ static void enter_state(struct sock *sk, enum lotspeed_state new_state) {
         }
     }
 }
+
 
 // 初始化连接
 static void lotspeed_init(struct sock *sk)
@@ -273,7 +287,6 @@ static void lotspeed_init(struct sock *sk)
 #endif
 
     atomic_inc(&active_connections);
-    atomic_inc(&module_ref_count);
 
     if (lotserver_verbose) {
         unsigned long gbps_int = ca->target_rate / 125000000;
@@ -282,7 +295,7 @@ static void lotspeed_init(struct sock *sk)
         unsigned int gain_frac = ca->cwnd_gain % 10;
 
         pr_info("lotspeed: [uk0@%s] NEW connection #%d | rate=%lu.%02lu Gbps | gain=%u.%ux | mode=%s | state=%s\n",
-                "2025-11-20 18:58:51",
+                CURRENT_TIMESTAMP,
                 atomic_read(&active_connections),
                 gbps_int, gbps_frac,
                 gain_int, gain_frac,
@@ -298,7 +311,7 @@ static void lotspeed_release(struct sock *sk)
     u64 duration;
 
     if (!ca) {
-        pr_warn("lotspeed: [uk0@%s] release called with NULL ca\n", "2025-11-20 18:58:51");
+        pr_warn("lotspeed: [uk0@%s] release called with NULL ca\n", CURRENT_TIMESTAMP);
         atomic_dec(&active_connections);
         return;
     }
@@ -311,7 +324,6 @@ static void lotspeed_release(struct sock *sk)
     }
 
     atomic_dec(&active_connections);
-    atomic_dec(&module_ref_count);
 
     if (ca->bytes_sent > 0) {
         atomic64_add(ca->bytes_sent, &total_bytes_sent);
@@ -323,7 +335,7 @@ static void lotspeed_release(struct sock *sk)
     if (lotserver_verbose) {
         u64 mb_sent = ca->bytes_sent >> 20;
         pr_info("lotspeed: [uk0@%s] connection released | duration=%llu s | sent=%llu MB | losses=%u | active=%d\n",
-                "2025-11-20 18:58:51", duration, mb_sent, ca->loss_count,
+                CURRENT_TIMESTAMP, duration, mb_sent, ca->loss_count,
                 atomic_read(&active_connections));
     }
 
@@ -340,7 +352,7 @@ static void lotspeed_update_rtt(struct sock *sk, u32 rtt_us)
     if (ca->state == PROBE_RTT || !ca->rtt_min || rtt_us < ca->rtt_min) {
         if (lotserver_verbose && ca->rtt_min > 0 && rtt_us < ca->rtt_min)
             pr_info("lotspeed: [uk0@%s] new min_rtt: %u us (was %u)\n",
-                    "2025-11-20 18:58:51", rtt_us, ca->rtt_min);
+                    CURRENT_TIMESTAMP, rtt_us, ca->rtt_min);
         ca->rtt_min = rtt_us;
     }
     ca->rtt_cnt++;
@@ -541,7 +553,7 @@ static void lotspeed_adapt_and_control(struct sock *sk, const struct rate_sample
         unsigned int gain_frac = ca->cwnd_gain % 10;
 
         pr_info("lotspeed: [uk0@%s] STATUS: [%s] cwnd=%u | rate=%lu.%02lu Gbps | RTT=%u us | gain=%u.%ux | losses=%u\n",
-                "2025-11-20 18:58:51", state_to_str(ca->state), tp->snd_cwnd,
+                CURRENT_TIMESTAMP, state_to_str(ca->state), tp->snd_cwnd,
                 gbps_int, gbps_frac, rtt_us, gain_int, gain_frac, ca->loss_count);
     }
 }
@@ -587,7 +599,7 @@ static void lotspeed_set_state_hook(struct sock *sk, u8 new_state)
             if (lotserver_turbo) {
                 if (lotserver_verbose && ca->loss_count % 10 == 0) {
                     pr_info("lotspeed: [uk0@%s] TURBO: Ignoring loss #%u\n",
-                            "2025-11-20 18:58:51", ca->loss_count + 1);
+                            CURRENT_TIMESTAMP, ca->loss_count + 1);
                 }
                 return;
             }
@@ -598,7 +610,7 @@ static void lotspeed_set_state_hook(struct sock *sk, u8 new_state)
                 unsigned int gain_int = ca->cwnd_gain / 10;
                 unsigned int gain_frac = ca->cwnd_gain % 10;
                 pr_info("lotspeed: [uk0@%s] LOSS #%u detected, gain reduced to %u.%ux\n",
-                        "2025-11-20 18:58:51", ca->loss_count, gain_int, gain_frac);
+                        CURRENT_TIMESTAMP, ca->loss_count, gain_int, gain_frac);
             }
             break;
 
@@ -737,7 +749,7 @@ static void __exit lotspeed_module_exit(void)
     int active_conns;
     int retry_count = 0;
 
-    pr_info("lotspeed: [uk0@%s] Beginning module unload\n", "2025-11-20 18:58:51");
+    pr_info("lotspeed: [uk0@%s] Beginning module unload\n", CURRENT_TIMESTAMP);
 
     tcp_unregister_congestion_control(&lotspeed_ops);
     pr_info("lotspeed: Unregistered from TCP stack\n");
@@ -767,7 +779,7 @@ static void __exit lotspeed_module_exit(void)
     // v2.1风格的卸载统计
     pr_info("╔════════════════════════════════════════════════════════╗\n");
     pr_info("║          LotSpeed v3.3 Unloaded                        ║\n");
-    pr_info("║          Time: 2025-11-20 18:58:51                     ║\n");
+    pr_info("║          Time: %s                     ║\n", CURRENT_TIMESTAMP);
     pr_info("║          User: uk0                                     ║\n");
     pr_info("║          Active Connections: %-26d║\n", active_conns);
     pr_info("║          Total Losses: %-32d║\n", atomic_read(&total_losses));
