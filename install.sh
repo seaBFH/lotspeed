@@ -359,7 +359,7 @@ safe_stop() {
 # 安全卸载函数
 safe_uninstall() {
     echo -e "${YELLOW}╔════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${YELLOW}║           Uninstalling LotSpeed v$VERSION              ║${NC}"
+    echo -e "${YELLOW}║           Uninstalling LotSpeed v$VERSION                   ║${NC}"
     echo -e "${YELLOW}╚════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
