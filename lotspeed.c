@@ -510,20 +510,23 @@ static void lotspeed_adapt_and_control(struct sock *sk, const struct rate_sample
     }
 
     // --- 5. 计算并设置 CWND ---
+    target_cwnd = 0;
+    if (mss > 0 && rtt_us > 0) {
+        // 核心公式：CWND = (rate × RTT) / MSS × gain
+        /* target_cwnd = (rate * RTT) / MSS * gain/10 */
+        target_cwnd = div64_u64(ca->target_rate * (u64)rtt_us, (u64)mss * 1000000);
+        target_cwnd = div_u64((u64)target_cwnd * ca->cwnd_gain, 10);
+    }
     if (ca->state == PROBE_RTT) {
         cwnd = lotserver_min_cwnd;
     } else if (ca->ss_mode && tp->snd_cwnd < tp->snd_ssthresh) {
         // v2.1特性：慢启动模式的指数增长
         cwnd = tp->snd_cwnd * 2;
-        if (cwnd >= target_cwnd) {
+        if (target_cwnd > 0 && cwnd >= (u32)target_cwnd) {
             ca->ss_mode = false;
-            cwnd = target_cwnd;
+            cwnd = (u32) target_cwnd;
         }
     } else {
-        // 核心公式：CWND = (rate × RTT) / MSS × gain
-        target_cwnd = div64_u64(ca->target_rate * (u64)rtt_us, (u64)mss * 1000000);
-        target_cwnd = div_u64(target_cwnd * ca->cwnd_gain, 10);
-
         if (ca->state == STARTUP && rs) {
             cwnd = tp->snd_cwnd + rs->acked_sacked;
         } else {
