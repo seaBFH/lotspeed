@@ -575,20 +575,55 @@ static void lotspeed_cong_control(struct sock *sk, const struct rate_sample *rs)
 #endif
 
 // 处理丢包时的 ssthresh (引入公平性退避)
+//static u32 lotspeed_ssthresh(struct sock *sk)
+//{
+//    struct tcp_sock *tp = tcp_sk(sk);
+//    struct lotspeed *ca = inet_csk_ca(sk);
+//
+//    if (lotserver_turbo) {
+//        return TCP_INFINITE_SSTHRESH;
+//    }
+//
+//    // 记录丢包
+//    ca->loss_count++;
+//    ca->cwnd_gain = max_t(u32, ca->cwnd_gain * 8 / 10, 10);
+//
+//    // 使用 lotserver_beta (默认0.7) 进行乘性降低
+//    return max_t(u32, (tp->snd_cwnd * lotserver_beta) / LOTSPEED_BETA_SCALE, lotserver_min_cwnd);
+//}
+
+// 实现类似 Zeta 的 "RTT 守卫机制"
 static u32 lotspeed_ssthresh(struct sock *sk)
 {
     struct tcp_sock *tp = tcp_sk(sk);
     struct lotspeed *ca = inet_csk_ca(sk);
+    u32 rtt_us = tp->srtt_us >> 3;
+    u32 tolerance_rtt;
 
-    if (lotserver_turbo) {
-        return TCP_INFINITE_SSTHRESH;
+    // 1. 获取基准 RTT (如果还没有 min_rtt，就用当前 RTT)
+    u32 base_rtt = ca->rtt_min ? ca->rtt_min : rtt_us;
+
+    // 2. 定义容忍度：Zeta 认为 RTT 增加 25% 以内都不算拥塞
+    // 加上 20ms 的固定抖动容忍
+    tolerance_rtt = base_rtt + (base_rtt >> 20) + 2000;
+
+    // 3. Zeta 核心逻辑判定
+    if (rtt_us <= tolerance_rtt) {
+        // RTT 正常，认为这是随机丢包 (Random Loss)
+        // 动作：完全不降速，或者只象征性降一点点
+        if (lotserver_verbose) {
+            pr_info("lotspeed: [Zeta-Like] Random loss detected (RTT stable), ignoring.\n");
+        }
+        // 仅记录，不减少 cwnd (模仿 Turbo 的效果，但有条件)
+        return tp->snd_cwnd;
     }
 
+    // 4. RTT 确实变大了，说明真堵了 -> 此时退化为 CUBIC/BBR 行为
     // 记录丢包
     ca->loss_count++;
     ca->cwnd_gain = max_t(u32, ca->cwnd_gain * 8 / 10, 10);
 
-    // 使用 lotserver_beta (默认0.7) 进行乘性降低
+    // 标准降速
     return max_t(u32, (tp->snd_cwnd * lotserver_beta) / LOTSPEED_BETA_SCALE, lotserver_min_cwnd);
 }
 
