@@ -100,3 +100,4 @@ dmesg -w
 * 优化算法细节，提升稳定性
 
 
+[![Star History Chart](https://api.star-history.com/svg?repos=uk0/lotspeed&type=Date)](https://star-history.com/#uk0/lotspeed&Date)

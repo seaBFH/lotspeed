@@ -4,7 +4,11 @@
 ### C ###
 # Prerequisites
 *.d
-
+.idea
+AppExKo
+dump_func
+exp
+kernel
 # Object files
 *.o
 *.ko
